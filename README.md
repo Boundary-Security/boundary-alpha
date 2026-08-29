@@ -4,19 +4,12 @@
 
 <h1 align="center">Boundary</h1>
 
-<p align="center">
-  <strong>Predictive security enforcement for autonomous AI agents and MCP systems.</strong>
-</p>
+<p align="center"><strong>Predictive security enforcement for autonomous AI agents and MCP systems.</strong></p>
+<p align="center">Stop dangerous agent behavior before the dangerous action is requested.</p>
 
 <p align="center">
-  Stop dangerous agent behavior before the dangerous action is requested.
-</p>
-
-<p align="center">
-  <a href="https://boundarysec.com">Website</a>
-  ·
-  <a href="https://boundarysec.com/#alpha">Request Private Alpha</a>
-  ·
+  <a href="https://boundarysec.com">Website</a> ·
+  <a href="https://boundarysec.com/#alpha">Request Private Alpha</a> ·
   <a href="mailto:info@boundarysec.com">Contact</a>
 </p>
 
@@ -32,65 +25,39 @@ Boundary asks an additional question:
 
 > **If this action is allowed now, what dangerous future states become reachable next?**
 
-Boundary is an experimental security layer for autonomous agents and MCP systems.
+Boundary is an experimental security layer for autonomous agents and Model Context Protocol (MCP) systems.
 
-It models agents, tools, information, communication paths, derivations and security invariants to reason about the consequences of an action **before the full sequence occurs**.
+It models agents, capabilities, information, derivations, communication paths and security policies to reason about the consequences of an action before a complete sequence occurs.
 
-The objective is not only to stop a prohibited final action.
-
-The objective is to identify when an earlier, individually legitimate action creates a path toward a prohibited outcome.
-
----
+The goal is not only to stop a prohibited final action. Boundary investigates whether an earlier, individually legitimate action changes the modeled state so that a prohibited outcome becomes reachable later.
 
 ## The problem
 
-AI agents increasingly interact with powerful systems:
+AI agents increasingly interact with MCP servers, databases, CRMs, filesystems, email, messaging platforms, SaaS APIs, internal tools and other autonomous agents.
 
-- MCP servers
-- databases
-- CRMs
-- filesystems
-- email
-- messaging platforms
-- SaaS APIs
-- internal tools
-- other autonomous agents
-
-Traditional authorization is usually evaluated one operation at a time.
-
-But an unsafe outcome may emerge from a sequence of individually legitimate operations.
-
-For example:
+Traditional authorization is commonly evaluated one operation at a time. But an unsafe outcome can emerge from a sequence of individually legitimate operations:
 
 ```text
-read_customer
-      |
-      v
-read_support_notes
-      |
-      v
-derive_sensitive_information
-      |
-      v
-relay_to_another_agent
-      |
-      v
-send_external
+read information A
+        |
+        v
+read information B
+        |
+        v
+derive sensitive information
+        |
+        v
+relay to another agent
+        |
+        v
+external sink
 ```
 
-A conventional control may permit the early operations and only reject `send_external`.
-
-By then, sensitive information may already have propagated through the agent system.
-
-Boundary attempts to reason about the reachable future **before that happens**.
-
----
+A conventional control may reject only the terminal operation. Boundary investigates whether the dangerous path can be identified earlier.
 
 ## Predictive reachability
 
-Boundary evaluates how the state of an agent system changes when an action succeeds.
-
-Conceptually:
+Boundary evaluates how the modeled state changes if a proposed action succeeds.
 
 ```text
 CURRENT STATE
@@ -105,20 +72,18 @@ FUTURE POSSIBILITIES
      |
      +------ safe
      |
-     +------ sensitive
+     +------ security-relevant
      |
      +------ prohibited
 ```
 
-If a proposed action creates a path toward a configured prohibited state, Boundary can intervene before that path is executed.
+When the current production model finds that a proposed action makes modeled sensitive external disclosure reachable, Boundary can intervene before the terminal disclosure action is requested.
 
-This allows Boundary to reason about security properties that span multiple steps rather than evaluating only the current tool invocation.
-
----
+The present controlled validation is specifically scoped to this modeled sensitive-external-disclosure path. It should not be interpreted as generic prediction of every possible future security invariant.
 
 ## Enforcement decisions
 
-Boundary currently produces three primary decisions:
+Boundary currently produces:
 
 ```text
 ALLOW
@@ -126,215 +91,98 @@ REQUIRE_APPROVAL
 BLOCK
 ```
 
-### ALLOW
+**ALLOW** — the modeled action is permitted under the current state and configured security model.
 
-The modeled action does not create a prohibited reachable state under the current security model.
+**REQUIRE_APPROVAL** — the current action can be safe by itself while making a modeled sensitive external disclosure reachable downstream. Boundary can gate that action before forwarding it upstream.
 
-```text
-crm_read_customer
-        |
-        v
-      ALLOW
-```
+**BLOCK** — the action violates the configured model, is invalid in the modeled state, or is denied by current enforcement policy.
 
-### REQUIRE_APPROVAL
-
-The current action may be legitimate by itself, but allowing it creates a security-relevant future that requires human authorization.
-
-```text
-crm_read_support_notes
-        |
-        v
-REQUIRE_APPROVAL
-
-Reason:
-A prohibited information flow
-becomes reachable downstream.
-```
-
-### BLOCK
-
-The action violates the configured security model or cannot safely be authorized.
-
-```text
-send_external
-      |
-      v
-    BLOCK
-```
-
-Boundary also follows deny-by-default behavior for unmodeled tools in the current alpha.
-
----
+Unmodeled MCP tools are handled deny-by-default in the current alpha.
 
 ## Example
 
-Consider an agent that can access customer information and communicate externally.
+Consider a modeled workflow in which separate pieces of public information can be combined into sensitive derived information, and another agent has a route to an external sink.
 
-A traditional policy might allow:
+An early read can be individually legitimate. After additional information becomes available, however, the modeled state may make future sensitive external disclosure reachable.
 
-```text
-read_customer
-read_support_notes
-```
+Boundary can then return `REQUIRE_APPROVAL` before the terminal disclosure action is requested.
 
-and block:
-
-```text
-send_sensitive_data_external
-```
-
-Boundary additionally reasons about whether allowing an earlier operation changes what becomes possible later.
-
-For example:
-
-```text
-Step 1
-
-read_customer
-→ ALLOW
-
-
-Step 2
-
-read_support_notes
-→ REQUIRE_APPROVAL
-
-Reason:
-Sensitive information can now be derived
-and a path to an external sink becomes reachable.
-
-
-Step 3
-
-send_external
-→ BLOCK
-```
-
-The important distinction is that Boundary can intervene at **Step 2**, before the prohibited final operation is requested.
-
----
+This is the predictive behavior currently being evaluated. It is not a claim of generic prediction across arbitrary workflows or invariants.
 
 ## MCP architecture
 
-Boundary can operate as a security gateway between an MCP client and an existing MCP server.
+Boundary can operate as a security proxy between a real MCP client and an existing MCP server.
 
 ```text
-+----------------------+
-| AI Agent / MCP Client|
-+----------+-----------+
-           |
-           v
-+------------------------------+
-|       Boundary Gateway       |
-|                              |
-|  Predictive reachability     |
-|  Information-flow reasoning  |
-|  Safety invariants           |
-|  Human approval              |
-|  Deny-by-default             |
-|  Audit                       |
-+--------------+---------------+
-               |
-               v
-+------------------------------+
-|     Existing MCP Server      |
-+------------------------------+
+AI Agent / MCP Client
+          |
+          v
++-----------------------------+
+|     Boundary MCP Proxy      |
+| Dynamic tool mirroring      |
+| Predictive evaluation       |
+| Information-flow reasoning  |
+| Human approval              |
+| Deny-by-default             |
+| Audit                       |
++-------------+---------------+
+              |
+              v
+      Upstream MCP Server
 ```
 
-The agent continues interacting through MCP.
-
-Boundary evaluates modeled tool calls before forwarding them upstream.
-
----
-
-## Multi-agent reasoning
-
-Security becomes more difficult when multiple agents can communicate.
-
-Information that is safe in one context may become dangerous after being transferred to another agent with different capabilities.
-
-Boundary models communication paths as part of the reachable system state.
-
-Conceptually:
+Controlled real-tool validation has exercised:
 
 ```text
-Agent A
-  |
-  | acquires sensitive information
-  v
-Agent A + sensitive information
-  |
-  | communication
-  v
-Agent B + sensitive information
-  |
-  | Agent B has external capability
-  v
-External sink
+real MCP ClientSession
+        |
+        v
+Boundary proxy process
+        |
+        v
+dynamically mirrored MCP tools
+        |
+        v
+Boundary policy evaluation
+        |
+        v
+real upstream MCP process
 ```
 
-This allows security reasoning to extend beyond a single agent or a single tool call.
+Allowed operations reached the upstream MCP server. Blocked or approval-gated operations were withheld before the corresponding upstream side effect occurred.
 
----
+## Multi-agent and derived-information reasoning
 
-## Derived information
-
-Sensitive information does not always need to be read directly.
-
-Agents may derive new information from data that appears harmless when considered separately.
-
-Boundary can model derivation rules such as:
+Boundary models communication paths between agents and can model derivation rules where multiple inputs produce new sensitive information.
 
 ```text
-information_A
-      +
-information_B
-      |
-      v
-derived_sensitive_information
+information_A + information_B
+              |
+              v
+   derived_sensitive_information
+              |
+              v
+         another agent
+              |
+              v
+        external sink
 ```
 
-The resulting information can then participate in subsequent reachability analysis.
+The derived information can participate in subsequent modeled reachability analysis.
 
----
+## Safety policies
 
-## Safety invariants
-
-Boundary security policies describe states that must not become reachable.
-
-Examples include:
+The primary production policy exercised in the current controlled predictive validation is:
 
 ```text
 Sensitive information must not reach an external sink.
 ```
 
-or:
-
-```text
-Agent B must never possess both information X
-and capability Y without approval.
-```
-
-Boundary evaluates proposed actions against these invariants and the modeled future state of the system.
-
----
+The research architecture explores broader state-based security reasoning, but generic predictive enforcement for arbitrary invariants has not been established.
 
 ## Human approval
 
-Some actions are not inherently malicious but cross a security boundary.
-
-Boundary can return:
-
-```text
-REQUIRE_APPROVAL
-```
-
-instead of immediately blocking them.
-
 The current alpha supports action-bound, one-shot approval tokens with replay protection.
-
-Conceptually:
 
 ```text
 Agent action
@@ -357,200 +205,134 @@ Boundary
              execute
 ```
 
----
-
 ## Current capabilities
 
-The current Boundary private alpha includes:
+The current controlled alpha includes:
 
-- predictive multi-step reachability analysis
+- predictive reachability for modeled sensitive external disclosure
 - multi-agent information-flow modeling
 - derived-information reasoning
-- configurable safety invariants
-- MCP tool discovery
-- MCP proxy enforcement
-- `ALLOW`
-- `REQUIRE_APPROVAL`
-- `BLOCK`
-- action-bound approval tokens
-- one-shot approval semantics
-- replay protection
+- configurable security policy modeling
+- real MCP client/proxy/upstream operation
+- dynamic MCP tool discovery and mirroring
+- enforcement before upstream execution
+- `ALLOW`, `REQUIRE_APPROVAL`, `BLOCK`
+- action-bound, one-shot approval tokens with replay protection
 - deny-by-default handling for unmodeled tools
 - audit logging
-- YAML configuration
+- YAML configuration and semantic validation
 - command-line tooling
+- controlled real-tool MCP validation
+- clean-room reproduction procedures
 
-Boundary is under active development and these capabilities may change during the alpha.
+## Controlled validation evidence
 
----
+Boundary has completed controlled internal validation using real MCP processes.
+
+Current evidence includes:
+
+- real MCP client → Boundary proxy → real upstream MCP execution
+- dynamic discovery and mirroring of upstream tools
+- successful execution of allowed upstream operations
+- unmodeled-tool denial before upstream execution
+- enforcement before blocked upstream side effects
+- approval gating before upstream execution
+- predictive intervention when a currently safe action made modeled sensitive external disclosure reachable downstream
+- reproduction from a fresh checkout and fresh virtual environment
+- an internal regression suite currently containing **208 passing tests**
+
+These are **controlled internal validation results**. They are not presented as independent external validation.
+
+External reproduction and independently selected workflows are the next evidence targets.
 
 ## What Boundary is not
 
-Boundary is not:
+Boundary is not an LLM prompt filter, a replacement for authentication or conventional authorization, a malware scanner, a static MCP allowlist firewall, proof that an incompletely modeled system is safe, or a production-ready security boundary.
 
-- an LLM prompt filter
-- a replacement for authentication
-- a replacement for authorization
-- a malware scanner
-- a generic MCP firewall based only on static allowlists
-- a guarantee that an incompletely modeled system is safe
-
-Boundary is intended to complement existing security controls by reasoning about **future reachable behavior**.
-
----
+Boundary is intended to complement existing controls by reasoning about modeled future reachable behavior.
 
 ## Security model limitations
 
-Boundary reasons about the world represented by its model.
+Boundary reasons about the world represented by its model. Decisions depend on the accuracy and completeness of modeled agents, capabilities, information classes, derivation rules, communication paths, external sinks and security policies.
 
-Its decisions depend on the accuracy and completeness of:
+Current research limitations include incomplete support for:
 
-- modeled agents
-- tool capabilities
-- information classes
-- derivation rules
-- communication paths
-- external sinks
-- safety invariants
+- artifact-specific acquisition
+- artifact-specific external-send semantics
+- changing communication topology
+- arbitrary future acquisition prediction
+- generic predictive coverage across arbitrary invariants
 
-An unmodeled capability can create a path that Boundary does not know exists.
+Boundary may also intervene conservatively when a dangerous future is reachable even if the intended workflow would remain benign. Measuring false positives and unnecessary interventions is an explicit external-validation objective.
 
-The current alpha should therefore be treated as an experimental security system, not as a production security boundary.
-
----
+The current alpha is experimental security software and should not be treated as a production security boundary.
 
 ## Current status
 
-Boundary is currently in a:
-
-**Controlled Private Alpha**
-
-Current evaluation build:
+**Controlled Private Alpha / External Validation**
 
 ```text
-Boundary 0.0.1 alpha 2
-Platform: Linux x86_64
-Python: 3.14
-Status: Experimental
+Boundary: 0.0.1a2
+Python: >= 3.12
+MCP: >= 2.1,<3
+Status: Experimental / non-production
 ```
 
-The protected implementation is **not published in this repository**.
+The protected Boundary implementation is **not published in this repository**.
 
-Selected evaluators receive a compiled Boundary runtime under separate evaluation terms.
+Controlled real-tool testing and internal clean-room reproduction have been completed. External reproduction by testers outside the Boundary development process is the next validation milestone.
 
-The private source repository, research implementation and internal benchmark suite are not distributed.
-
----
+The private source repository and internal research/benchmark material remain non-public.
 
 ## Why a controlled alpha?
 
-Boundary is currently testing a fundamental research and product hypothesis:
+Boundary is testing:
 
 > **Does predictive multi-step reachability provide a meaningful security property beyond conventional per-call authorization and runtime policy enforcement?**
 
-We do not only want confirmation.
-
-We actively want:
-
-- criticism
-- counterexamples
-- adversarial scenarios
-- integration failures
-- false positives
-- false negatives
-- cases where conventional policy systems already solve the problem adequately
-
-If the idea is wrong, we want to discover that early.
-
-If it is useful, we want to understand precisely where.
-
----
+We actively want criticism, counterexamples, adversarial scenarios, integration failures, false positives, false negatives, modeling gaps and cases where conventional policy systems already solve the problem adequately.
 
 ## Who should test Boundary?
 
-We are especially interested in engineers and teams working with:
+We are looking for engineers and researchers working with MCP, autonomous AI agents, multi-agent systems, agent infrastructure, AI security, runtime authorization, security gateways, sensitive-data workflows and enterprise AI systems.
 
-- Model Context Protocol (MCP)
-- autonomous AI agents
-- multi-agent systems
-- agent infrastructure
-- AI security
-- runtime authorization
-- security gateways
-- sensitive-data workflows
-- enterprise AI systems
+The most useful testers are willing to reproduce the current controlled result and then challenge Boundary with workflows we did not design.
 
-You do not need to deploy Boundary in production.
+## External validation process
 
-The alpha is specifically intended for controlled evaluation and technical feedback.
+### Phase A — Reproduction
 
----
+A tester receives a frozen Boundary checkpoint and reproduction instructions. The initial scenario is executed without changing the frozen workflow. Differences and failures are preserved.
+
+### Phase B — Independent challenge
+
+After reproduction, the tester selects a small MCP or agent-tool workflow independently. Before running Boundary, the tester records the legitimate objective, benign behavior, unsafe behavior and expected intervention behavior.
+
+Those expectations are frozen before evaluation.
 
 ## Request Private Alpha access
 
-If you would like to evaluate Boundary:
+Boundary is recruiting external technical evaluators.
 
-### Website
+**Website:** https://boundarysec.com/#alpha
 
-**https://boundarysec.com/#alpha**
+**Email:** info@boundarysec.com
 
-### Email
+Please tell us briefly what you are building, your agent/MCP stack, how you currently secure tool access, whether you can reproduce a Python/MCP test environment, and what independent workflow you may be interested in testing.
 
-**info@boundarysec.com**
-
-Please tell us briefly:
-
-- what you are building
-- your agent/MCP stack
-- how you currently secure tool access
-- what scenario you would like to test
-
-Selected testers receive the controlled evaluation runtime and onboarding instructions.
-
----
+Selected testers receive private evaluation access and onboarding instructions.
 
 ## Public repository
 
-This repository exists for:
+This repository contains public Boundary documentation, architecture explanations, alpha information, research discussion, project updates and external-validation information.
 
-- public Boundary documentation
-- architecture explanations
-- alpha information
-- research discussion
-- project updates
-
-It intentionally does **not** contain:
-
-```text
-Boundary private source code
-Protected reachability implementation
-Internal research code
-Internal benchmark suite
-Controlled runtime binaries
-```
-
-Please do not expect the executable Boundary implementation to appear in this repository during the controlled alpha.
-
----
+It intentionally does **not** contain the protected Boundary source implementation, private research code or internal benchmark suite.
 
 ## Responsible disclosure
 
-If you discover a potential security vulnerability in Boundary, please **do not publish it as a public GitHub issue**.
+Do not publish suspected Boundary vulnerabilities as public GitHub issues.
 
-Contact:
-
-**info@boundarysec.com**
-
-Include when possible:
-
-- Boundary version
-- environment
-- MCP implementation
-- expected behavior
-- observed behavior
-- reproduction steps
-
----
+Report privately to **info@boundarysec.com** with the Boundary version, environment, MCP implementation, expected and observed behavior, reproduction steps and potential impact when available.
 
 ## Research discussion
 
@@ -558,41 +340,36 @@ Boundary is interested in a broader question:
 
 > How should autonomous systems be secured when the security consequence of an action depends not only on what the action does now, but on what the action enables later?
 
-We welcome technical discussion around:
-
-- predictive authorization
-- reachability analysis
-- agent capability graphs
-- information-flow security
-- multi-agent containment
-- MCP security
-- human-in-the-loop enforcement
-
-Technical disagreement is welcome.
-
----
+Technical disagreement and counterexamples are welcome.
 
 ## Roadmap
 
-During the private alpha we are focused on:
-
 ```text
-Real-world validation
-        ↓
-External adversarial testing
-        ↓
-MCP integration feedback
-        ↓
+Controlled real-tool validation
+        |
+        v
+Internal clean-room reproduction
+        |
+        v
+External reproduction
+        |
+        v
+Independently selected workflows
+        |
+        v
+False-positive / false-negative analysis
+        |
+        v
 Modeling improvements
-        ↓
+        |
+        v
 Runtime hardening
-        ↓
-Broader platform support
+        |
+        v
+Broader platform evaluation
 ```
 
-The roadmap will be driven primarily by evidence from real agent systems rather than feature count.
-
----
+The next major milestone is external evidence from testers operating outside the Boundary development process.
 
 ## Contact
 
@@ -609,6 +386,4 @@ Boundary Security
   Predict the dangerous path before the agent takes it.
 </p>
 
-<p align="center">
-  © 2026 Boundary Security. All rights reserved.
-</p>
+<p align="center">© 2026 Boundary Security. All rights reserved.</p>
